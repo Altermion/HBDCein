@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Happy Birthday!</title>
+
+<style>
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--outer-color);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: var(--font-body);
+  }
+  #game {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .btn {
+    position: fixed; bottom: var(--btn-bottom);
+    width: var(--btn-size); height: var(--btn-size); border-radius: 50%;
+    border: 3px solid var(--btn-border);
+    background: var(--btn-color);
+    color: var(--btn-text);
+    font-size: calc(var(--btn-size) * 0.45); font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  .btn.pressed { background: var(--btn-pressed); }
+
+  #start {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: var(--start-bg); color: var(--start-text); text-align: center;
+  }
+  #start h1 { margin: 0; font: italic 700 44px var(--font-title); }
+  #start p  { margin: 0; font-size: 18px; font-weight: 700; opacity: .9; }
+  #startBtn {
+    margin-top: 6px; padding: 12px 34px; border: 0; border-radius: 30px;
+    background: var(--start-btn); color: var(--start-btn-text);
+    font: 800 20px var(--font-body);
+  }
+
+  #rotate {
+    display: none; position: fixed; inset: 0; z-index: 20;
+    background: var(--outer-color); color: var(--start-text); text-align: center;
+    align-items: center; justify-content: center; font-size: 22px; font-weight: 800; padding: 30px;
+  }
+  @media (orientation: portrait) { #rotate { display: flex; } }
+</style>
+</head>
+
+<body>
+<canvas id="game"></canvas>
+
+<div class="btn" id="btnLeft"></div>
+<div class="btn" id="btnRight"></div>
+
+<div id="start">
+  <h1 id="startTitle"></h1>
+  <p id="startHint"></p>
+  <button id="startBtn"></button>
+</div>
+
+<div id="rotate"></div>
+
+<script>
+/* =====================================================================
+   BIRTHDAY WALK GAME  -  TEMPLATE
+   ===================================================================== */
+
+/* ============================ SETTINGS ============================ */
+
+/* ---------- 1. SCREEN ---------- */
+const GAME_WIDTH      = 800;        
+const GAME_HEIGHT     = 400;
+const GROUND_Y        = 330;        
+const OUTER_BAR_COLOR = '#2b2140';  
+const TRY_FULLSCREEN  = true;       
+
+/* ---------- 2. START SCREEN & TEXTS ---------- */
+const START_TITLE        = 'A little walk for you';
+const START_HINT         = 'Hold the arrows to walk';
+const START_BUTTON_TEXT  = 'Start';
+const ROTATE_MESSAGE     = 'Please turn your phone sideways (landscape)';
+const START_OVERLAY_COLOR   = 'rgba(43,33,64,.82)';   
+const START_TEXT_COLOR      = '#ffffff';
+const START_BUTTON_COLOR    = '#ffd36e';
+const START_BUTTON_TEXT_COLOR = '#4a2c5e';
+
+/* ---------- 3. FONTS ---------- */
+const FONT_TITLE = "Georgia, 'Times New Roman', serif";                       
+const FONT_BODY  = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"; 
+
+/* ---------- 4. ON-SCREEN BUTTONS ---------- */
+const SHOW_BUTTONS          = true;       
+const BUTTON_LEFT_LABEL     = '\u25C0';   
+const BUTTON_RIGHT_LABEL    = '\u25B6';   
+const BUTTON_SIZE           = 76;         
+const BUTTON_GAP            = 20;         
+const BUTTON_MARGIN         = 22;         
+const BUTTON_BOTTOM         = 18;         
+const BUTTON_LAYOUT         = 'left';     
+const BUTTON_COLOR          = 'rgba(255,255,255,.22)';
+const BUTTON_PRESSED_COLOR  = 'rgba(255,255,255,.5)';
+const BUTTON_BORDER_COLOR   = 'rgba(255,255,255,.8)';
+const BUTTON_TEXT_COLOR     = '#ffffff';
+
+/* ---------- 5. CHARACTER ---------- */
+const PLAYER_IMAGE       = 'images/character.png';
+const PLAYER_HEIGHT      = 120;    
+const PLAYER_FACES_RIGHT = true;   
+const PLAYER_START_X     = 200;    
+const WALK_SPEED         = 180;    
+const WALK_ANIMATION     = true;   
+const WALK_BOB_HEIGHT    = 8;      
+const WALK_BOB_SPEED     = 16;     
+const WALK_TILT          = 0.08;   
+const SHOW_SHADOW        = true;   
+const SHADOW_COLOR       = 'rgba(40,20,60,.22)';
+const SHADOW_WIDTH       = 32;     
+
+const REMOVE_CHARACTER_BACKGROUND = true;  
+const BACKGROUND_TOLERANCE = 40;   
+
+/* ---------- 6. BACKGROUND & GROUND ---------- */
+const BACKGROUND_COLOR   = '#82C8E5';   
+const GRASS_COLOR        = '#6fae7a';   
+const GRASS_HEIGHT       = 16;          
+const SOIL_COLOR         = '#5a8c66';   
+const SHOW_GROUND_DECORATIONS = true;   
+const GROUND_DOT_COLORS  = ['#ffd36e', '#ff9db8', '#ffffff'];   
+const GROUND_TUFT_COLOR  = '#8cc696';
+
+/* ---------- 7. PHOTOS ---------- */
+const PHOTOS = [
+  { src: 'images/photo 1.jpeg', caption: 'Dari mana ya?' },
+  { src: 'images/photo 2.jpeg', caption: 'Hehe' },
+  { src: 'images/photo 3.jpeg', caption: 'LUCU' },
+  { src: 'images/photo 4.jpeg', caption: 'Aku?' },
+  { src: 'images/photo 5.jpeg', caption: 'Syukuri hari ini...' },
+  { src: 'images/photo 6.jpeg', caption: 'GEMESH' },
+  { src: 'images/photo 7.jpeg', caption: 'My ss of you' },
+  { src: 'images/photo 8.jpeg', caption: 'My final ss of you' },
+  { src: 'images/photo 9.jpeg', caption: 'Dari siapa lagi ini...' },
+  { src: 'images/photo 10.jpeg', caption: 'You are too tired Sayang...' },
+  { src: 'images/photo 11.jpeg', caption: 'Before we are apart...' },
+  { src: 'images/photo 12.jpeg', caption: 'Remember our first fotbar?' },
+];
+const PHOTO_WIDTH         = 170;        
+const PHOTO_HEIGHT        = 130;
+const PHOTO_BORDER        = 10;         
+const PHOTO_BORDER_BOTTOM = 34;         
+const PHOTO_BORDER_COLOR  = '#fffaf0';  
+const PHOTO_SHADOW        = true;       
+const PHOTO_TOP_Y         = 62;         
+const PHOTO_FIRST_X       = 520;        
+const PHOTO_SPACING       = 300;        
+const PHOTO_TILT          = 0.05;       
+const PHOTO_SWAY          = 0.012;      
+const PHOTO_SPEED         = 0.6;        
+const CAPTION_COLOR       = '#6b5a7a';
+const CAPTION_SIZE        = 14;
+const SHOW_TWINE          = true;       
+const TWINE_COLOR         = '#8a6a4f';
+const TWINE_WIDTH         = 2;
+const PIN_COLOR           = '#c99a6b';  
+
+/* ---------- 8. BOUQUET ---------- */
+const FLOWER_IMAGES = ['images/flower1.png', 'images/flower2.webp']; 
+const BOUQUET_SCREEN_X = 620;      
+const BOUQUET_STOP_GAP = 100;      
+const GROW_SECONDS     = 2.6;      
+const STEM_DELAY       = 0.04;     
+const STEM_WIDTH       = 5;
+const SHOW_LEAVES      = true;
+const LEAF_COLOR       = '#5da36a';
+const FLOWER_OFFSET_Y  = 0;        
+const FLOWER_SWAY      = 0.05;     
+const FLOWER_PLACEHOLDER_COLORS = ['#ff9db8', '#ffd36e', '#ff8f6b', '#c9a4ff', '#ff6f91']; 
+
+const SHOW_WRAP          = true;
+const WRAP_COLOR         = '#f4a6c0';
+const WRAP_HIGHLIGHT     = 'rgba(255,255,255,.35)';   
+const WRAP_TOP_WIDTH     = 100;    
+const WRAP_BOTTOM_WIDTH  = 28;     
+const WRAP_HEIGHT        = 96;     
+const SHOW_RIBBON        = true;
+const RIBBON_COLOR       = '#7a4ea3';
+const RIBBON_HEIGHT      = 60;     
+const RIBBON_SIZE        = 24;     
+
+// Larger Bouquet (15 stems) strictly using indices 0 and 1
+const BOUQUET_STEMS = [
+  { dx: -120, height: 110, size: 65,  flower: 0, color: '#4f8a5b' },
+  { dx: -95,  height: 140, size: 75,  flower: 1, color: '#3f7a52' },
+  { dx: -75,  height: 170, size: 85,  flower: 0, color: '#2e5c3e' },
+  { dx: -50,  height: 200, size: 90,  flower: 1, color: '#4f8a5b' },
+  { dx: -25,  height: 225, size: 95,  flower: 0, color: '#3f7a52' },
+  { dx:   0,  height: 250, size: 110, flower: 1, color: '#2e5c3e' },
+  { dx:  25,  height: 235, size: 95,  flower: 0, color: '#4f8a5b' },
+  { dx:  50,  height: 210, size: 90,  flower: 1, color: '#3f7a52' },
+  { dx:  75,  height: 175, size: 85,  flower: 0, color: '#2e5c3e' },
+  { dx:  95,  height: 150, size: 75,  flower: 1, color: '#4f8a5b' },
+  { dx:  120, height: 120, size: 65,  flower: 0, color: '#3f7a52' },
+  { dx: -40,  height: 150, size: 80,  flower: 1, color: '#2e5c3e' },
+  { dx:  40,  height: 160, size: 80,  flower: 0, color: '#4f8a5b' },
+  { dx: -15,  height: 180, size: 85,  flower: 0, color: '#3f7a52' },
+  { dx:  15,  height: 190, size: 85,  flower: 1, color: '#2e5c3e' }
+];
+
+/* ---------- 9. BIRTHDAY MESSAGE ---------- */
+const MESSAGE_TITLE = 'HBD SAYANG, MY CEIN!';      
+const MESSAGE_LINES = [                             
+  'Semoga kita selalu just like perfect soulmate we are!',
+  'Your name is always on my prayers!',
+];
+const MESSAGE_X            = 290;          
+const MESSAGE_Y            = 110;          
+const MESSAGE_COLOR        = '#ffffff';
+const MESSAGE_TITLE_SIZE   = 42;
+const MESSAGE_TEXT_SIZE    = 18;
+const MESSAGE_LINE_GAP     = 28;           
+const MESSAGE_SHADOW_COLOR = 'rgba(60,30,90,.45)';   
+const MESSAGE_FADE_SECONDS = 1.2;          
+
+
+/* ======================== END OF SETTINGS ======================== */
+
+const W = GAME_WIDTH, H = GAME_HEIGHT;
+const RES = 2;   
+
+(function applyPageSettings() {
+  const r = document.documentElement.style;
+  r.setProperty('--outer-color', OUTER_BAR_COLOR);
+  r.setProperty('--font-title', FONT_TITLE);
+  r.setProperty('--font-body', FONT_BODY);
+  r.setProperty('--btn-size', BUTTON_SIZE + 'px');
+  r.setProperty('--btn-bottom', BUTTON_BOTTOM + 'px');
+  r.setProperty('--btn-color', BUTTON_COLOR);
+  r.setProperty('--btn-pressed', BUTTON_PRESSED_COLOR);
+  r.setProperty('--btn-border', BUTTON_BORDER_COLOR);
+  r.setProperty('--btn-text', BUTTON_TEXT_COLOR);
+  r.setProperty('--start-bg', START_OVERLAY_COLOR);
+  r.setProperty('--start-text', START_TEXT_COLOR);
+  r.setProperty('--start-btn', START_BUTTON_COLOR);
+  r.setProperty('--start-btn-text', START_BUTTON_TEXT_COLOR);
+
+  document.getElementById('startTitle').textContent = START_TITLE;
+  document.getElementById('startHint').textContent  = START_HINT;
+  document.getElementById('startBtn').textContent   = START_BUTTON_TEXT;
+  document.getElementById('rotate').textContent     = ROTATE_MESSAGE;
+
+  const L = document.getElementById('btnLeft'), R = document.getElementById('btnRight');
+  L.textContent = BUTTON_LEFT_LABEL;
+  R.textContent = BUTTON_RIGHT_LABEL;
+  if (!SHOW_BUTTONS) { L.style.display = 'none'; R.style.display = 'none'; }
+
+  const m = `max(${BUTTON_MARGIN}px, env(safe-area-inset-left))`;
+  const mr = `max(${BUTTON_MARGIN}px, env(safe-area-inset-right))`;
+  const step = BUTTON_SIZE + BUTTON_GAP;
+  if (BUTTON_LAYOUT === 'right') {
+    R.style.right = mr;
+    L.style.right = `calc(${mr} + ${step}px)`;
+  } else if (BUTTON_LAYOUT === 'split') {
+    L.style.left = m;
+    R.style.right = mr;
+  } else {
+    L.style.left = m;
+    R.style.left = `calc(${m} + ${step}px)`;
+  }
+})();
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = W * RES;
+canvas.height = H * RES;
+ctx.scale(RES, RES);
+
+function resize() {
+  const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width  = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+function loadImage(src, process) {
+  const o = { img: new Image(), ok: false };
+  o.img.onload = () => {
+    if (process) { try { o.img = process(o.img); } catch (e) { } }
+    o.ok = true;
+  };
+  o.img.onerror = () => { o.ok = false; };
+  o.img.src = src;
+  return o;
+}
+
+function removeBackground(img) {
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0);
+  const imgData = cx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+
+  if (d[3] < 10) return img;                      
+  const r0 = d[0], g0 = d[1], b0 = d[2];          
+  const isBg = i => d[i + 3] < 10 ||
+    (Math.abs(d[i] - r0) <= BACKGROUND_TOLERANCE &&
+     Math.abs(d[i + 1] - g0) <= BACKGROUND_TOLERANCE &&
+     Math.abs(d[i + 2] - b0) <= BACKGROUND_TOLERANCE);
+
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  const push = (x, y) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const p = y * w + x;
+    if (seen[p] || !isBg(p * 4)) return;
+    seen[p] = 1; stack.push(p);
+  };
+  for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+  for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+  while (stack.length) {
+    const p = stack.pop();
+    d[p * 4 + 3] = 0;
+    const x = p % w, y = (p - x) / w;
+    push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+  }
+  cx.putImageData(imgData, 0, 0);
+  return c;
+}
+
+const playerImg  = loadImage(PLAYER_IMAGE, REMOVE_CHARACTER_BACKGROUND ? removeBackground : null);
+const flowerImgs = FLOWER_IMAGES.map(src => loadImage(src));
+const photos     = PHOTOS.map(p => ({ image: loadImage(p.src), caption: p.caption || '' }));
+
+const photoSpan = PHOTO_FIRST_X + (PHOTOS.length - 1) * PHOTO_SPACING + PHOTO_WIDTH + PHOTO_BORDER * 2;
+const MAX_CAM   = photoSpan / PHOTO_SPEED;                 
+const BOUQUET_WORLD_X = MAX_CAM + BOUQUET_SCREEN_X;        
+const EXTRA_MAX = BOUQUET_SCREEN_X - PLAYER_START_X - BOUQUET_STOP_GAP; 
+
+let cam    = 0;        
+let extra  = 0;        
+let facing = 'right';
+let started = false;
+let time = 0;
+let growth = 0;        
+let bouquetTriggered = false;
+let messageAlpha = 0;
+let dir = 0;           
+
+const hold = { left: false, right: false };
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft'  || e.key === 'a') hold.left  = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') hold.right = true;
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft'  || e.key === 'a') hold.left  = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') hold.right = false;
+});
+
+function bindButton(id, side) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); hold[side] = true;  el.classList.add('pressed'); };
+  const off = e => { e.preventDefault(); hold[side] = false; el.classList.remove('pressed'); };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+bindButton('btnLeft', 'left');
+bindButton('btnRight', 'right');
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  started = true;
+  document.getElementById('start').style.display = 'none';
+  if (TRY_FULLSCREEN) {
+    try { document.documentElement.requestFullscreen(); } catch (e) {}
+    try { screen.orientation.lock('landscape'); } catch (e) {}
+  }
+});
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const mod   = (a, n) => ((a % n) + n) % n;
+function rand(n) { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); } 
+const easeOutBack = t => { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+
+function update(dt) {
+  time += dt;
+  dir = started && !bouquetTriggered ? (hold.right ? 1 : 0) - (hold.left ? 1 : 0) : 0;
+  if (dir !== 0) facing = dir > 0 ? 'right' : 'left';
+
+  const move = dir * WALK_SPEED * dt;
+
+  if (move > 0) {
+    const room = MAX_CAM - cam;
+    const scroll = Math.min(move, room);
+    cam += scroll;
+    extra = Math.min(EXTRA_MAX, extra + (move - scroll));
+  } else if (move < 0) {
+    const back = Math.min(-move, extra);
+    extra -= back;
+    cam = Math.max(0, cam - (-move - back));
+  }
+
+  if (!bouquetTriggered && extra >= EXTRA_MAX - 0.5) bouquetTriggered = true;
+  if (bouquetTriggered) {
+    growth = Math.min(1, growth + dt / GROW_SECONDS);
+    if (growth >= 1) messageAlpha = Math.min(1, messageAlpha + dt / MESSAGE_FADE_SECONDS);
+  }
+}
+
+function drawBackground() {
+  ctx.fillStyle = BACKGROUND_COLOR;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawPhoto(p, x, index) {
+  const fw = PHOTO_WIDTH + PHOTO_BORDER * 2;
+  const fh = PHOTO_HEIGHT + PHOTO_BORDER + PHOTO_BORDER_BOTTOM;
+  const baseTilt = (rand(index + 4) - 0.5) * 2 * PHOTO_TILT;
+  const sway = Math.sin(time * 1.4 + index) * PHOTO_SWAY;
+
+  ctx.save();
+  ctx.translate(x + fw / 2, PHOTO_TOP_Y);
+  ctx.rotate(baseTilt + sway);
+
+  if (PHOTO_SHADOW) {
+    ctx.shadowColor = 'rgba(40,20,60,.28)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 3;
+  }
+  ctx.fillStyle = PHOTO_BORDER_COLOR;
+  ctx.fillRect(-fw / 2, 0, fw, fh);
+  ctx.shadowColor = 'transparent';
+
+  const px = -fw / 2 + PHOTO_BORDER, py = PHOTO_BORDER;
+  if (p.image.ok) {
+    const iw = p.image.img.width, ih = p.image.img.height;
+    const scale = Math.max(PHOTO_WIDTH / iw, PHOTO_HEIGHT / ih);
+    const sw = PHOTO_WIDTH / scale, sh = PHOTO_HEIGHT / scale;
+    ctx.drawImage(p.image.img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, px, py, PHOTO_WIDTH, PHOTO_HEIGHT);
+  } else {
+    ctx.fillStyle = '#e4d9f2';
+    ctx.fillRect(px, py, PHOTO_WIDTH, PHOTO_HEIGHT);
+    ctx.fillStyle = '#9a86b8';
+    ctx.font = `800 16px ${FONT_BODY}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Photo ' + (index + 1), 0, py + PHOTO_HEIGHT / 2 + 5);
+  }
+
+  if (p.caption) {
+    ctx.fillStyle = CAPTION_COLOR;
+    ctx.font = `700 ${CAPTION_SIZE}px ${FONT_BODY}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.caption, 0, fh - PHOTO_BORDER_BOTTOM / 2 + CAPTION_SIZE / 3);
+  }
+
+  if (SHOW_TWINE) {
+    ctx.fillStyle = PIN_COLOR;
+    ctx.fillRect(-4, -8, 8, 18);
+  }
+  ctx.restore();
+}
+
+function drawPhotos() {
+  if (SHOW_TWINE) {
+    ctx.strokeStyle = TWINE_COLOR;
+    ctx.lineWidth = TWINE_WIDTH;
+    ctx.beginPath();
+    ctx.moveTo(0, PHOTO_TOP_Y - 2);
+    ctx.lineTo(W, PHOTO_TOP_Y - 2);
+    ctx.stroke();
+  }
+
+  const fw = PHOTO_WIDTH + PHOTO_BORDER * 2;
+  photos.forEach((p, i) => {
+    const x = PHOTO_FIRST_X + i * PHOTO_SPACING - cam * PHOTO_SPEED;
+    if (x > W + 20 || x + fw < -20) return;     
+    drawPhoto(p, x, i);
+  });
+}
+
+function drawGround() {
+  ctx.fillStyle = SOIL_COLOR;
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.fillStyle = GRASS_COLOR;
+  ctx.fillRect(0, GROUND_Y, W, GRASS_HEIGHT);
+
+  if (!SHOW_GROUND_DECORATIONS) return;
+  
+  const step = 64;
+  const first = Math.floor(cam / step) - 1;
+  for (let i = first; i < first + W / step + 3; i++) {
+    const x = i * step + rand(i) * 40 - cam;
+    const y = GROUND_Y + GRASS_HEIGHT + 6 + rand(i + 5) * 30;
+    
+    if (rand(i + 2) > 0.5) {
+      // DYNAMIC GRASS FLOWERS
+      const fIndex = Math.floor(rand(i + 7) * flowerImgs.length);
+      const fImg = flowerImgs[fIndex];
+      const fSize = 16 + rand(i) * 12; 
+      
+      if (fImg && fImg.ok) {
+        const fw = fSize;
+        const fh = fSize * fImg.img.height / fImg.img.width;
+        ctx.drawImage(fImg.img, x - fw / 2, y - fh + 4, fw, fh);
+      } else {
+        ctx.fillStyle = GROUND_DOT_COLORS[Math.floor(rand(i + 7) * GROUND_DOT_COLORS.length)];
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle = GROUND_TUFT_COLOR; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 3, y - 8); ctx.moveTo(x, y); ctx.lineTo(x + 3, y - 8); ctx.stroke();
+    }
+  }
+}
+
+function drawPlayer() {
+  const x = PLAYER_START_X + extra;
+  const moving = dir !== 0 && WALK_ANIMATION;     
+  const bob  = moving ? Math.abs(Math.sin(time * WALK_BOB_SPEED)) * WALK_BOB_HEIGHT : 0;
+  const tilt = moving ? Math.sin(time * WALK_BOB_SPEED) * WALK_TILT : 0;
+
+  if (SHOW_SHADOW) {
+    ctx.fillStyle = SHADOW_COLOR;
+    ctx.beginPath(); ctx.ellipse(x, GROUND_Y + 4, SHADOW_WIDTH, 7, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(x, GROUND_Y - bob);
+  ctx.rotate(tilt);
+  if ((facing === 'left') === PLAYER_FACES_RIGHT) ctx.scale(-1, 1);
+
+  if (playerImg.ok) {
+    const w = PLAYER_HEIGHT * playerImg.img.width / playerImg.img.height;
+    ctx.drawImage(playerImg.img, -w / 2, -PLAYER_HEIGHT, w, PLAYER_HEIGHT);
+  } else {
+    ctx.fillStyle = '#7a4ea3';
+    ctx.beginPath(); ctx.roundRect(-20, -78, 40, 62, 14); ctx.fill();
+    ctx.fillStyle = '#ffd9b8';
+    ctx.beginPath(); ctx.arc(0, -92, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a2a4a';
+    ctx.beginPath(); ctx.arc(9, -94, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(-14, -16, 10, 16); ctx.fillRect(4, -16, 10, 16);
+  }
+  ctx.restore();
+}
+
+function bez(p0, p1, p2, t) {   
+  const u = 1 - t;
+  return { x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+           y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y };
+}
+
+function drawFlower(imgObj, x, y, size, index, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(time * 1.6 + index) * FLOWER_SWAY);
+  ctx.scale(scale, scale);
+  if (imgObj && imgObj.ok) {
+    const h = size * imgObj.img.height / imgObj.img.width;
+    ctx.drawImage(imgObj.img, -size / 2, -h / 2, size, h);
+  } else {
+    ctx.fillStyle = FLOWER_PLACEHOLDER_COLORS[index % FLOWER_PLACEHOLDER_COLORS.length];
+    for (let k = 0; k < 8; k++) {
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath(); ctx.ellipse(0, -size * 0.28, size * 0.14, size * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#fff1a8';
+    ctx.beginPath(); ctx.arc(0, 0, size * 0.16, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBouquet() {
+  if (growth <= 0) return;
+  const bx = BOUQUET_WORLD_X - cam;
+  const base = { x: bx, y: GROUND_Y + 2 };
+  const n = BOUQUET_STEMS.length;
+  const flowers = [];
+
+  BOUQUET_STEMS.forEach((s, i) => {
+    const gi = clamp((growth - i * STEM_DELAY) / (1 - STEM_DELAY * (n - 1)), 0, 1);
+    if (gi <= 0) return;
+    const p0 = base;
+    const p1 = { x: bx + s.dx * 0.15, y: base.y - s.height * 0.55 };
+    const p2 = { x: bx + s.dx,        y: base.y - s.height };
+    const t = 1 - Math.pow(1 - gi, 2);     
+
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = STEM_WIDTH;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    for (let k = 1; k <= 24; k++) {
+      const pt = bez(p0, p1, p2, (t * k) / 24);
+      ctx.lineTo(pt.x, pt.y);
+    }
+    ctx.stroke();
+
+    if (SHOW_LEAVES && t > 0.45) {
+      const lp = bez(p0, p1, p2, 0.45);
+      const side = i % 2 ? 1 : -1;
+      ctx.fillStyle = LEAF_COLOR;
+      ctx.beginPath();
+      ctx.ellipse(lp.x + side * 12, lp.y - 4, 14, 5, side * -0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (gi > 0.8) {
+      const top = bez(p0, p1, p2, t);
+      flowers.push({ s, i, x: top.x, y: top.y + FLOWER_OFFSET_Y, sc: easeOutBack(clamp((gi - 0.8) / 0.2, 0, 1)) });
+    }
+  });
+
+  ctx.save();
+  ctx.globalAlpha = clamp(growth * 4, 0, 1);
+  const top = GROUND_Y - WRAP_HEIGHT, bottom = GROUND_Y + 2;
+  const tw = WRAP_TOP_WIDTH / 2, bw = WRAP_BOTTOM_WIDTH / 2;
+  if (SHOW_WRAP) {
+    ctx.fillStyle = WRAP_COLOR;
+    ctx.beginPath();
+    ctx.moveTo(bx - tw, top); ctx.lineTo(bx + tw, top); ctx.lineTo(bx + bw, bottom); ctx.lineTo(bx - bw, bottom);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = WRAP_HIGHLIGHT;
+    ctx.beginPath();
+    ctx.moveTo(bx - tw, top); ctx.lineTo(bx - tw * 0.16, top); ctx.lineTo(bx - 2, bottom); ctx.lineTo(bx - bw, bottom);
+    ctx.closePath(); ctx.fill();
+  }
+  if (SHOW_RIBBON) {
+    ctx.fillStyle = RIBBON_COLOR;
+    const by = GROUND_Y - RIBBON_HEIGHT, rs = RIBBON_SIZE;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - rs, by - rs / 2); ctx.lineTo(bx - rs, by + rs / 2); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + rs, by - rs / 2); ctx.lineTo(bx + rs, by + rs / 2); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx, by, rs / 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  flowers.forEach(f => drawFlower(flowerImgs[f.s.flower], f.x, f.y, f.s.size, f.i, f.sc));
+}
+
+function drawMessage() {
+  if (messageAlpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = messageAlpha;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = MESSAGE_SHADOW_COLOR;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = MESSAGE_COLOR;
+  ctx.font = `italic 700 ${MESSAGE_TITLE_SIZE}px ${FONT_TITLE}`;
+  ctx.fillText(MESSAGE_TITLE, MESSAGE_X, MESSAGE_Y);
+  ctx.font = `800 ${MESSAGE_TEXT_SIZE}px ${FONT_BODY}`;
+  MESSAGE_LINES.forEach((line, i) => ctx.fillText(line, MESSAGE_X, MESSAGE_Y + MESSAGE_LINE_GAP + 14 + i * MESSAGE_LINE_GAP));
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawBackground();
+  drawPhotos();
+  drawGround();
+  drawBouquet();
+  drawPlayer();
+  drawMessage();
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
